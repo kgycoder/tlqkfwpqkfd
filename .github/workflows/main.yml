@@ -1,0 +1,66 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # gradle-wrapper.jar 같은 바이너리를 저장소에 넣지 않아도 되도록 Gradle 을 직접 설치합니다.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        run: gradle --no-daemon assembleRelease
+
+      - name: Collect APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/SpellFix.apk
+          ls -l dist
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpellFix-apk
+          path: dist/SpellFix.apk
+          if-no-files-found: error
+
+      # v1.0 같은 태그를 푸시하면 해당 이름의 Release 에 APK 를 올립니다.
+      - name: Publish release (tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/SpellFix.apk
+
+      # main 브랜치에 푸시할 때마다 'nightly' Release 의 APK 를 최신 빌드로 교체합니다.
+      - name: Publish nightly release (main)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly build
+          prerelease: true
+          files: dist/SpellFix.apk
